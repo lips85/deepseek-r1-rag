@@ -53,13 +53,34 @@ st.markdown(
 )
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)]
 
+
+# INITAILIZE
+for key, default in [
+    ("uploaded_file", False)
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+
+
+
 # Streamlit 앱 제목 설정
-st.title("DeepSeek R1 & ollama를 활용한 RAG 시스템 구축")
+st.title("DeepSeek R1(32B) RAG")
 
 # PDF 파일 업로드
-uploaded_file = st.file_uploader("PDF 파일을 업로드하세요", type="pdf")
 
-if uploaded_file is not None:
+with st.sidebar:
+    if st.session_state['uploaded_file'] is False:
+        st.file_uploader("PDF 파일을 업로드하세요", type="pdf", key="file")
+
+    model = st.selectbox(
+    "모델을 골라주세요.",
+    ("deepseek-r1:32b", "sisaai/sisaai-llama3.1:latest"),
+)
+
+if st.session_state["file"] is not None:
+    st.success("upload finished")
+    uploaded_file = st.session_state["file"]
     # 파일명에서 확장자를 제외한 이름 추출
     file_name = Path(uploaded_file.name).stem
     vector_store_dir = f"vector_stores/{file_name}"
@@ -102,8 +123,8 @@ if uploaded_file is not None:
         )
 
     # LLM 정의
-    # llm = OllamaLLM(model="deepseek-r1:14b")
-    llm = OllamaLLM(model="sisaai/sisaai-llama3.1:latest")
+    llm = OllamaLLM(model=model, temperature=0.1)
+    # llm = OllamaLLM(model="sisaai/sisaai-llama3.1:latest")
 
     # 시스템 프롬프트 정의
     system_prompt = (
