@@ -75,7 +75,7 @@ with st.sidebar:
 
     model = st.selectbox(
     "모델을 골라주세요.",
-    ("deepseek-r1:32b", "sisaai/sisaai-llama3.1:latest"),
+    ("deepseek-r1:32b", "deepseek-r1:70b","sisaai/sisaai-llama3.1:latest", "benedict/linkbricks-llama3.1-korean:70b"),
 )
 
 if st.session_state["file"] is not None:
@@ -123,16 +123,16 @@ if st.session_state["file"] is not None:
         )
 
     # LLM 정의
-    llm = OllamaLLM(model=model, temperature=0.1)
-    # llm = OllamaLLM(model="sisaai/sisaai-llama3.1:latest")
+    llm = OllamaLLM(model=model, temperature=0.2)
 
     # 시스템 프롬프트 정의
     system_prompt = (
-        "주어진 문맥을 참고하여 질문에 답하세요. "
-        "답을 모를 경우, '모르겠습니다'라고만 답하고 스스로 답을 만들지 마세요. "
-        "답변은 최대 5문장으로 간결하게 작성하세요. "
-        "최종 답변은 무조건 한국어(korean)으로 작성해주세요"
-        "문맥: {context}"
+        """
+        주어진 문맥을 참고하여 질문에 답하세요.
+        답을 모를 경우, '모르겠습니다'라고만 답하고 스스로 답을 만들지 마세요.
+        최종 답변은 무조건 한국어(korean)으로 작성해주세요
+        문맥: {context}
+        """
     )
 
     # ChatPromptTemplate 정의
