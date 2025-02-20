@@ -55,13 +55,9 @@ torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__
 
 
 # INITAILIZE
-for key, default in [
-    ("uploaded_file", False)
-]:
+for key, default in [("uploaded_file", False)]:
     if key not in st.session_state:
         st.session_state[key] = default
-
-
 
 
 # Streamlit 앱 제목 설정
@@ -74,18 +70,32 @@ with st.sidebar:
     model = st.selectbox(
         label="## 1.LLM 모델을 골라주세요.",
         label_visibility="collapsed",
-    options=["deepseek-r1:32b", "deepseek-r1:70b","sisaai/sisaai-llama3.1:latest", "benedict/linkbricks-llama3.1-korean:70b"],
-)
+        options=[
+            "deepseek-r1:32b",
+            "deepseek-r1:70b",
+            "sisaai/sisaai-llama3.1:latest",
+            "benedict/linkbricks-llama3.1-korean:70b",
+        ],
+    )
     st.write("## 2.embedding 모델을 골라주세요.")
     select_embedder = st.selectbox(
-    "2.embedding 모델을 골라주세요.",
-    label_visibility="collapsed",
-    options=("snowflake-arctic-embed2","HuggingFaceEmbeddings", "nomic-embed-text:latest"),
-)
+        "2.embedding 모델을 골라주세요.",
+        label_visibility="collapsed",
+        options=(
+            "snowflake-arctic-embed2",
+            "HuggingFaceEmbeddings",
+            "nomic-embed-text:latest",
+        ),
+    )
 
-    if st.session_state['uploaded_file'] is False:
+    if st.session_state["uploaded_file"] is False:
         st.write("## 3.PDF 파일을 업로드하세요")
-        st.file_uploader("3.PDF 파일을 업로드하세요", type="pdf", key="file", label_visibility="collapsed")
+        st.file_uploader(
+            "3.PDF 파일을 업로드하세요",
+            type="pdf",
+            key="file",
+            label_visibility="collapsed",
+        )
 
 if st.session_state["file"] is not None:
     st.success("upload finished")
@@ -100,7 +110,7 @@ if st.session_state["file"] is not None:
         # 기존 벡터 스토어 로드 - allow_dangerous_deserialization 파라미터 추가
         st.write("저장된 벡터 스토어를 불러옵니다.")
 
-        if select_embedder is "HuggingFaceEmbeddings":
+        if select_embedder == "HuggingFaceEmbeddings":
             embedder = HuggingFaceEmbeddings()
         else:
             embedder = OllamaEmbeddings(model=select_embedder)
@@ -122,12 +132,11 @@ if st.session_state["file"] is not None:
         docs = loader.load()
 
         # 문서 분할기 초기화
-        if select_embedder is "HuggingFaceEmbeddings":
+        if select_embedder == "HuggingFaceEmbeddings":
             embedder = HuggingFaceEmbeddings()
         else:
             embedder = OllamaEmbeddings(model=select_embedder)
 
-    
         text_splitter = SemanticChunker(embedder)
         documents = text_splitter.split_documents(docs)
 
@@ -146,14 +155,12 @@ if st.session_state["file"] is not None:
     llm = OllamaLLM(model=model, temperature=0.2)
 
     # 시스템 프롬프트 정의
-    system_prompt = (
-        """
+    system_prompt = """
         주어진 문맥을 참고하여 질문에 답하세요.
         답을 모를 경우, '모르겠습니다'라고만 답하고 스스로 답을 만들지 마세요.
         최종 답변은 무조건 한국어(korean)으로 작성해주세요
         문맥: {context}
         """
-    )
 
     # ChatPromptTemplate 정의
     prompt = ChatPromptTemplate.from_messages(
