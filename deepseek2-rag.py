@@ -75,6 +75,7 @@ with st.sidebar:
             "deepseek-r1:70b",
             "sisaai/sisaai-llama3.1:latest",
             "benedict/linkbricks-llama3.1-korean:70b",
+            "jinbora/deepseek-r1-Bllossom:8b",
         ],
     )
     st.write("## 2.embedding 모델을 골라주세요.")
