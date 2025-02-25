@@ -5,7 +5,7 @@ from langchain_community.document_loaders import PDFPlumberLoader
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_ollama import OllamaLLM, OllamaEmbeddings
+from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains.retrieval import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -14,51 +14,36 @@ from pathlib import Path
 # models
 from models import LLM_options, EMBEDDING_options
 
-# 색상 팔레트 정의
-primary_color = "#1E90FF"  # 기본 색상
-secondary_color = "#FF6347"  # 보조 색상
-background_color = "#F5F5F5"  # 배경 색상
-text_color = "#4561e9"  # 텍스트 색상
 
-# 사용자 정의 CSS 적용
-st.markdown(
-    f"""
-    <style>
-    .stApp {{
-        background-color: {background_color};
-        color: {text_color};
-    }}
-    .stButton>button {{
-        background-color: {primary_color};
-        color: white;
-        border-radius: 5px;
-        border: none;
-        padding: 10px 20px;
-        font-size: 16px;
-    }}
-    .stTextInput>div>div>input {{
-        border: 2px solid {primary_color};
-        border-radius: 5px;
-        padding: 10px;
-        font-size: 16px;
-    }}
-    .stFileUploader>div>div>div>button {{
-        background-color: {secondary_color};
-        color: white;
-        border-radius: 5px;
-        border: none;
-        padding: 10px 20px;
-        font-size: 16px;
-    }}
-    </style>
-""",
-    unsafe_allow_html=True,
-)
+# 채팅 관련 클래스 추가
+class ChatMemory:
+    @staticmethod
+    def save_message(message, role):
+        st.session_state["messages"].append({"message": message, "role": role})
+
+    @staticmethod
+    def send_message(message, role, save=True):
+        with st.chat_message(role):
+            st.markdown(message)
+        if save:
+            ChatMemory.save_message(message, role)
+
+    @staticmethod
+    def paint_history():
+        for message in st.session_state["messages"]:
+            ChatMemory.send_message(message["message"], message["role"], save=False)
+
+
+# 색상 팔레트 정의
+
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)]
 
 
 # INITAILIZE
-for key, default in [("uploaded_file", False)]:
+for key, default in [
+    ("uploaded_file", False),
+    ("messages", []),
+]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -145,10 +130,11 @@ if st.session_state["file"] is not None:
             search_type="similarity", search_kwargs={"k": 3}
         )
 
-    # LLM 정의
-    llm = OllamaLLM(
+    # LLM 정의 (OllamaLLM 대신 ChatOllama 사용)
+    llm = ChatOllama(
         model=model,
         temperature=0.5,
+        streaming=True,  # 스트리밍 명시적으로 활성화
     )
 
     # 시스템 프롬프트 정의
@@ -173,14 +159,59 @@ if st.session_state["file"] is not None:
     # 문서 검색 기반 QA 체인 생성
     rag_chain = create_retrieval_chain(retriever, combine_docs_chain)
 
-    # 검색 기반 QA 체인 생성
-    user_input = st.text_input("PDF와 관련된 질문을 입력하세요:")
+    # 데모 메시지 추가 및 채팅 기록 표시
+    if not st.session_state["messages"]:
+        # 메시지를 세션에만 저장하고 화면에는 표시하지 않음
+        st.session_state["messages"].append(
+            {"message": "PDF 문서와 관련된 질문을 입력해주세요!", "role": "ai"}
+        )
+
+    # 세션에 저장된 모든 메시지 표시
+    ChatMemory.paint_history()
+
+    # 채팅 입력 사용
+    user_input = st.chat_input("PDF와 관련된 질문을 입력하세요:")
 
     # 사용자 입력 처리
     if user_input:
-        with st.spinner("처리 중 ..."):
-            response = rag_chain.invoke({"input": user_input})
-            st.write("응답:")
-            st.write(response.get("answer", "응답을 처리할 수 없습니다."))
+        # 사용자 메시지 표시
+        ChatMemory.send_message(user_input, "human")
+
+        with st.chat_message("ai"):
+            try:
+                # 메시지 박스 준비
+                message_placeholder = st.empty()
+                full_response = ""
+
+                # 직접 검색하고 채팅 모델에 전달
+                docs = retriever.invoke(user_input)
+                context = "\n\n".join(doc.page_content for doc in docs)
+
+                # 메시지 생성
+                messages = [
+                    ("system", system_prompt.replace("{context}", context)),
+                    ("human", user_input),
+                ]
+
+                # 직접 ChatOllama로 스트리밍
+                for chunk in llm.stream(messages):
+                    if hasattr(chunk, "content"):
+                        content = chunk.content
+                        if content:
+                            full_response += content
+                            message_placeholder.markdown(full_response)
+
+                # 응답 저장
+                if full_response:
+                    ChatMemory.save_message(full_response, "ai")
+                else:
+                    # 응답이 없는 경우 기본 메시지 표시
+                    st.warning("답변을 생성할 수 없습니다.")
+
+            except Exception as e:
+                st.error(f"오류가 발생했습니다: {e}")
+                import traceback
+
+                st.error(f"상세 오류: {traceback.format_exc()}")
 else:
     st.write("진행하려면 PDF 파일을 업로드하세요")
