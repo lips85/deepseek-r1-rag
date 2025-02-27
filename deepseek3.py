@@ -5,6 +5,7 @@ from langchain_community.document_loaders import PDFPlumberLoader
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain_qdrant import QdrantVectorStore
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains.retrieval import create_retrieval_chain
@@ -43,13 +44,14 @@ torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__
 for key, default in [
     ("uploaded_file", False),
     ("messages", []),
+    ("vector_store_name", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
 
 
 # Streamlit 앱 제목 설정
-st.title("DeepSeek R1(32B) RAG")
+st.title("Simple RAG service")
 
 # PDF 파일 업로드
 
@@ -59,12 +61,14 @@ with st.sidebar:
         label="## 1.LLM 모델을 골라주세요.",
         label_visibility="collapsed",
         options=LLM_options,
+        disabled=True,
     )
     st.write("## 2.embedding 모델을 골라주세요.")
     select_embedder = st.selectbox(
         "2.embedding 모델을 골라주세요.",
         label_visibility="collapsed",
         options=EMBEDDING_options,
+        disabled=True,
     )
 
     if st.session_state["uploaded_file"] is False:
@@ -75,13 +79,23 @@ with st.sidebar:
             key="file",
             label_visibility="collapsed",
         )
+    if st.session_state["vector_store_name"] is None:
+        st.write("## 4.벡터 스토어를 골라주세요")
+        vector_store_name = st.selectbox(
+            "4.벡터 스토어를 골라주세요",
+            label_visibility="collapsed",
+            options=["FAISS", "Qdrant"],
+            disabled=True,
+        )
 
 if st.session_state["file"] is not None:
     st.success("upload finished")
     uploaded_file = st.session_state["file"]
     # 파일명에서 확장자를 제외한 이름 추출
     file_name = Path(uploaded_file.name).stem
-    vector_store_dir = f"vector_stores/{select_embedder}/{file_name}"
+    vector_store_dir = (
+        f"vector_stores/{vector_store_name}/{select_embedder}/{file_name}"
+    )
 
     # 벡터 스토어가 이미 존재하는지 확인
     if os.path.exists(vector_store_dir):
@@ -94,9 +108,39 @@ if st.session_state["file"] is not None:
         else:
             embedder = OllamaEmbeddings(model=select_embedder)
 
-        vector = FAISS.load_local(
-            vector_store_dir, embedder, allow_dangerous_deserialization=True
-        )
+        # 벡터스토어 유형에 따라 다르게 로드
+        if vector_store_name == "FAISS":
+            vector = FAISS.load_local(
+                vector_store_dir, embedder, allow_dangerous_deserialization=True
+            )
+        elif vector_store_name == "Qdrant":
+            # Qdrant의 경우 메모리 모드만 지원하므로 다시 생성
+            st.warning(
+                "Qdrant 메모리 모드는 세션 간 데이터가 유지되지 않습니다. 문서를 다시 처리합니다."
+            )
+
+            # 임시 파일로 저장
+            with open("temp.pdf", "wb") as f:
+                f.write(uploaded_file.getvalue())
+
+            # PDF 로더 초기화
+            loader = PDFPlumberLoader("temp.pdf")
+            docs = loader.load()
+
+            # 문서 분할
+            text_splitter = SemanticChunker(embedder)
+            documents = text_splitter.split_documents(docs)
+
+            # 메모리에 Qdrant 생성
+            vector = QdrantVectorStore.from_documents(
+                documents,
+                embedder,
+                location=":memory:",
+                collection_name=f"collection_{file_name}",
+            )
+            # 참고: Qdrant 메모리 모드는 세션이 종료되면 데이터가 손실됩니다.
+            os.makedirs(vector_store_dir, exist_ok=True)  # 폴더만 생성 (기록 용도)
+
         retriever = vector.as_retriever(
             search_type="similarity", search_kwargs={"k": 3}
         )
@@ -120,11 +164,22 @@ if st.session_state["file"] is not None:
         documents = text_splitter.split_documents(docs)
 
         # 벡터 스토어 생성 및 임베딩 추가
-        vector = FAISS.from_documents(documents, embedder)
+        if vector_store_name == "FAISS":
+            vector = FAISS.from_documents(documents, embedder)
 
-        # 벡터 스토어 저장
-        os.makedirs(vector_store_dir, exist_ok=True)
-        vector.save_local(vector_store_dir)
+            # 벡터 스토어 저장
+            os.makedirs(vector_store_dir, exist_ok=True)
+            vector.save_local(vector_store_dir)
+        elif vector_store_name == "Qdrant":
+            # Qdrant 로컬 메모리 모드로 사용 (영구 저장하지 않음)
+            vector = QdrantVectorStore.from_documents(
+                documents,
+                embedder,
+                location=":memory:",  # 메모리 내 데이터베이스 사용
+                collection_name=f"collection_{file_name}",
+            )
+            # 참고: Qdrant 메모리 모드는 세션이 종료되면 데이터가 손실됩니다.
+            os.makedirs(vector_store_dir, exist_ok=True)  # 폴더만 생성 (기록 용도)
 
         retriever = vector.as_retriever(
             search_type="similarity", search_kwargs={"k": 3}

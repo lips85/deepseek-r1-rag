@@ -1,7 +1,7 @@
 LLM_options = [
+    "sisaai/sisaai-llama3.1:latest",
     "jinbora/deepseek-r1-Bllossom:8b",
     "deepseek-r1:32b",
-    "sisaai/sisaai-llama3.1:latest",
     "benedict/linkbricks-llama3.1-korean:70b",
 ]
 EMBEDDING_options = [
