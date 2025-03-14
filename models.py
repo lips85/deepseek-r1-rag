@@ -1,4 +1,5 @@
 LLM_options = [
+    "qwq:latest",
     "sisaai/sisaai-llama3.1:latest",
     "jinbora/deepseek-r1-Bllossom:8b",
     "jinbora/deepseek-r1-Bllossom:70b",
